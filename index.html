@@ -97,17 +97,6 @@
             display: none !important;
         }
 
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            padding: 10px;
-        }
-
-        .transactions-container {
-            height: 400px;
-            overflow-y: auto;
-        }
-
         @media (max-width: 768px) {
             .stats-container {
                 flex-direction: column;
@@ -284,32 +273,25 @@
                             </div>
                         </div>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="transactions-container" id="transactionsContainer">
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0" id="transactionsTable">
-                                    <thead class="sticky-top" style="background-color: var(--card-bg);">
-                                        <tr>
-                                            <th>التاريخ</th>
-                                            <th>التصنيف</th>
-                                            <th>الوصف</th>
-                                            <th>المبلغ</th>
-                                            <th>إجراءات</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="transactionsList">
-                                        <!-- Transactions will be added here dynamically -->
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="text-center py-3" id="noTransactions">
-                                <p class="text-muted">لا توجد عمليات مسجلة</p>
-                            </div>
-                            <div id="loadingSpinner" class="loading-spinner">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">جاري التحميل...</span>
-                                </div>
-                            </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="transactionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ</th>
+                                        <th>التصنيف</th>
+                                        <th>الوصف</th>
+                                        <th>المبلغ</th>
+                                        <th>إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionsList">
+                                    <!-- Transactions will be added here dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-center py-3" id="noTransactions">
+                            <p class="text-muted">لا توجد عمليات مسجلة</p>
                         </div>
                     </div>
                 </div>
@@ -422,8 +404,6 @@
             const totalExpense = document.getElementById('totalExpense');
             const filterOptions = document.querySelectorAll('.filter-option');
             const searchInput = document.getElementById('searchInput');
-            const transactionsContainer = document.getElementById('transactionsContainer');
-            const loadingSpinner = document.getElementById('loadingSpinner');
             
             const editModal = new bootstrap.Modal(document.getElementById('editModal'));
             const editForm = document.getElementById('editForm');
@@ -440,10 +420,6 @@
             let currentUser = null;
             let currentFilter = 'all';
             let currentSearch = '';
-            let displayedTransactions = 3;
-            let allTransactions = [];
-            let filteredTransactions = [];
-            let isLoading = false;
 
             // Initialize the app
             init();
@@ -467,28 +443,14 @@
                 option.addEventListener('click', function(e) {
                     e.preventDefault();
                     currentFilter = this.getAttribute('data-filter');
-                    displayedTransactions = 3;
-                    filterAndDisplayTransactions();
+                    filterTransactions(currentFilter, currentSearch);
                 });
             });
 
             // Search transactions
             searchInput.addEventListener('input', function() {
                 currentSearch = this.value.toLowerCase();
-                displayedTransactions = 3;
-                filterAndDisplayTransactions();
-            });
-
-            // Infinite scroll
-            transactionsContainer.addEventListener('scroll', function() {
-                if (isLoading || displayedTransactions >= filteredTransactions.length) return;
-                
-                const { scrollTop, scrollHeight, clientHeight } = transactionsContainer;
-                const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50;
-                
-                if (isNearBottom) {
-                    loadMoreTransactions();
-                }
+                filterTransactions(currentFilter, currentSearch);
             });
 
             // Edit transaction
@@ -606,9 +568,7 @@
                 const userId = currentUser.uid;
                 database.ref('users/' + userId + '/transactions').on('value', snapshot => {
                     const transactions = snapshot.val() || [];
-                    allTransactions = transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    filterAndDisplayTransactions();
-                    updateTotalsAndCharts();
+                    updateUI(transactions);
                 });
             }
 
@@ -681,18 +641,25 @@
 
             // Edit transaction
             function editTransaction(id) {
-                const transaction = allTransactions.find(t => t.id == id);
+                if (!currentUser) return;
                 
-                if (transaction) {
-                    editId.value = transaction.id;
-                    editAmount.value = transaction.amount;
-                    editType.value = transaction.type;
-                    editCategory.value = transaction.category;
-                    editDate.value = transaction.date;
-                    editDescription.value = transaction.description || '';
-                    
-                    editModal.show();
-                }
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const transaction = transactions.find(t => t.id == id);
+                        
+                        if (transaction) {
+                            editId.value = transaction.id;
+                            editAmount.value = transaction.amount;
+                            editType.value = transaction.type;
+                            editCategory.value = transaction.category;
+                            editDate.value = transaction.date;
+                            editDescription.value = transaction.description || '';
+                            
+                            editModal.show();
+                        }
+                    });
             }
 
             // Save edited transaction
@@ -712,27 +679,26 @@
                     return;
                 }
                 
-                const updatedTransaction = {
-                    id: id,
-                    amount: amount,
-                    type: type,
-                    category: category,
-                    date: date,
-                    description: description
-                };
-                
-                // Update transaction in local array
-                const index = allTransactions.findIndex(t => t.id == id);
-                if (index !== -1) {
-                    allTransactions[index] = updatedTransaction;
-                }
-                
-                // Save to Firebase
-                database.ref('users/' + userId + '/transactions').set(allTransactions)
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const index = transactions.findIndex(t => t.id == id);
+                        
+                        if (index !== -1) {
+                            transactions[index] = {
+                                id: id,
+                                amount: amount,
+                                type: type,
+                                category: category,
+                                date: date,
+                                description: description
+                            };
+                            
+                            return database.ref('users/' + userId + '/transactions').set(transactions);
+                        }
+                    })
                     .then(() => {
                         editModal.hide();
-                        filterAndDisplayTransactions();
-                        updateTotalsAndCharts();
                     });
             }
 
@@ -745,51 +711,83 @@
                 }
                 
                 const userId = currentUser.uid;
-                
-                // Update local array
-                allTransactions = allTransactions.filter(t => t.id != id);
-                
-                // Save to Firebase
-                database.ref('users/' + userId + '/transactions').set(allTransactions);
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const filteredTransactions = transactions.filter(t => t.id != id);
+                        return database.ref('users/' + userId + '/transactions').set(filteredTransactions);
+                    });
             }
 
-            // Filter transactions based on current filter and search
-            function filterTransactions() {
-                filteredTransactions = [...allTransactions];
+            // Filter transactions by type and search
+            function filterTransactions(filter, search = '') {
+                if (!currentUser) return;
                 
-                if (currentFilter === 'income') {
-                    filteredTransactions = filteredTransactions.filter(t => t.type === 'income');
-                } else if (currentFilter === 'expense') {
-                    filteredTransactions = filteredTransactions.filter(t => t.type === 'expense');
-                }
-                
-                if (currentSearch) {
-                    filteredTransactions = filteredTransactions.filter(t => 
-                        t.category.toLowerCase().includes(currentSearch) || 
-                        (t.description && t.description.toLowerCase().includes(currentSearch))
-                    );
-                }
-                
-                return filteredTransactions;
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        let transactions = snapshot.val() || [];
+                        
+                        if (filter === 'income') {
+                            transactions = transactions.filter(t => t.type === 'income');
+                        } else if (filter === 'expense') {
+                            transactions = transactions.filter(t => t.type === 'expense');
+                        }
+                        
+                        if (search) {
+                            transactions = transactions.filter(t => 
+                                t.category.toLowerCase().includes(search) || 
+                                (t.description && t.description.toLowerCase().includes(search))
+                            );
+                        }
+                        
+                        renderTransactions(transactions);
+                    });
             }
 
-            // Display transactions based on current display count
-            function displayTransactions() {
-                const transactionsToShow = filteredTransactions.slice(0, displayedTransactions);
+            // Update UI with current data
+            function updateUI(transactions) {
+                // Calculate totals
+                const incomeTotal = transactions
+                    .filter(t => t.type === 'income')
+                    .reduce((sum, t) => sum + t.amount, 0);
                 
+                const expenseTotal = transactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const balance = incomeTotal - expenseTotal;
+                
+                // Update totals display
+                currentBalance.textContent = `${balance.toFixed(2)} ج.م`;
+                totalIncome.textContent = `${incomeTotal.toFixed(2)} ج.م`;
+                totalExpense.textContent = `${expenseTotal.toFixed(2)} ج.م`;
+                
+                // Render transactions
+                renderTransactions(transactions);
+                
+                // Update charts
+                updateCharts(transactions);
+            }
+
+            // Render transactions list
+            function renderTransactions(transactions) {
                 // Clear current list
                 transactionsList.innerHTML = '';
                 
                 // Show "no transactions" message if empty
-                if (transactionsToShow.length === 0) {
+                if (transactions.length === 0) {
                     noTransactions.classList.remove('d-none');
                     return;
                 }
                 
                 noTransactions.classList.add('d-none');
                 
+                // Sort by date (newest first)
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
                 // Add each transaction to the list
-                transactionsToShow.forEach(transaction => {
+                transactions.forEach(transaction => {
                     const row = document.createElement('tr');
                     row.className = `transaction-item ${transaction.type}-item`;
                     
@@ -835,59 +833,15 @@
                 });
             }
 
-            // Filter and display transactions
-            function filterAndDisplayTransactions() {
-                filterTransactions();
-                displayTransactions();
-            }
-
-            // Load more transactions on scroll
-            function loadMoreTransactions() {
-                isLoading = true;
-                loadingSpinner.style.display = 'block';
-                
-                setTimeout(() => {
-                    displayedTransactions += 3;
-                    displayTransactions();
-                    isLoading = false;
-                    loadingSpinner.style.display = 'none';
-                }, 500);
-            }
-
-            // Update totals and charts
-            function updateTotalsAndCharts() {
-                updateTotals();
-                updateCharts();
-            }
-
-            // Update totals
-            function updateTotals() {
-                // Calculate totals
-                const incomeTotal = allTransactions
-                    .filter(t => t.type === 'income')
-                    .reduce((sum, t) => sum + t.amount, 0);
-                
-                const expenseTotal = allTransactions
-                    .filter(t => t.type === 'expense')
-                    .reduce((sum, t) => sum + t.amount, 0);
-                
-                const balance = incomeTotal - expenseTotal;
-                
-                // Update totals display
-                currentBalance.textContent = `${balance.toFixed(2)} ج.م`;
-                totalIncome.textContent = `${incomeTotal.toFixed(2)} ج.م`;
-                totalExpense.textContent = `${expenseTotal.toFixed(2)} ج.م`;
-            }
-
             // Update charts
-            function updateCharts() {
-                updateExpensesChart();
-                updateMonthlyChart();
+            function updateCharts(transactions) {
+                updateExpensesChart(transactions);
+                updateMonthlyChart(transactions);
             }
 
             // Update expenses chart
-            function updateExpensesChart() {
-                const expenses = allTransactions.filter(t => t.type === 'expense');
+            function updateExpensesChart(transactions) {
+                const expenses = transactions.filter(t => t.type === 'expense');
                 
                 // Get chart canvas
                 const ctx = document.getElementById('expensesChart').getContext('2d');
@@ -953,7 +907,7 @@
             }
 
             // Update monthly chart
-            function updateMonthlyChart() {
+            function updateMonthlyChart(transactions) {
                 // Get current year and month
                 const now = new Date();
                 const currentYear = now.getFullYear();
@@ -970,7 +924,7 @@
                 }
                 
                 // Process transactions
-                allTransactions.forEach(transaction => {
+                transactions.forEach(transaction => {
                     const date = new Date(transaction.date);
                     const year = date.getFullYear();
                     const month = date.getMonth();
