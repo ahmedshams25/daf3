@@ -97,6 +97,11 @@
             display: none !important;
         }
 
+        .transactions-modal .modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
         @media (max-width: 768px) {
             .stats-container {
                 flex-direction: column;
@@ -261,6 +266,7 @@
                         <h6 class="m-0 font-weight-bold text-primary">سجل العمليات</h6>
                         <div>
                             <input type="text" id="searchInput" class="form-control form-control-sm d-inline-block w-auto me-2" placeholder="بحث...">
+                            <button id="showAllTransactionsBtn" class="btn btn-sm btn-outline-primary me-2">سجل المعاملات</button>
                             <div class="dropdown d-inline-block">
                                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                                     تصفية
@@ -364,6 +370,42 @@
         </div>
     </div>
 
+    <!-- All Transactions Modal -->
+    <div class="modal fade transactions-modal" id="allTransactionsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">سجل جميع المعاملات</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>التاريخ</th>
+                                    <th>النوع</th>
+                                    <th>التصنيف</th>
+                                    <th>الوصف</th>
+                                    <th>المبلغ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="allTransactionsList">
+                                <!-- All transactions will be added here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-center py-3" id="noAllTransactions">
+                        <p class="text-muted">لا توجد عمليات مسجلة</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إغلاق</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Firebase configuration
@@ -398,14 +440,18 @@
             const themeToggle = document.getElementById('themeToggle');
             const transactionForm = document.getElementById('transactionForm');
             const transactionsList = document.getElementById('transactionsList');
+            const allTransactionsList = document.getElementById('allTransactionsList');
             const noTransactions = document.getElementById('noTransactions');
+            const noAllTransactions = document.getElementById('noAllTransactions');
             const currentBalance = document.getElementById('currentBalance');
             const totalIncome = document.getElementById('totalIncome');
             const totalExpense = document.getElementById('totalExpense');
             const filterOptions = document.querySelectorAll('.filter-option');
             const searchInput = document.getElementById('searchInput');
+            const showAllTransactionsBtn = document.getElementById('showAllTransactionsBtn');
             
             const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+            const allTransactionsModal = new bootstrap.Modal(document.getElementById('allTransactionsModal'));
             const editForm = document.getElementById('editForm');
             const editId = document.getElementById('editId');
             const editAmount = document.getElementById('editAmount');
@@ -420,6 +466,7 @@
             let currentUser = null;
             let currentFilter = 'all';
             let currentSearch = '';
+            let allTransactions = [];
 
             // Initialize the app
             init();
@@ -451,6 +498,12 @@
             searchInput.addEventListener('input', function() {
                 currentSearch = this.value.toLowerCase();
                 filterTransactions(currentFilter, currentSearch);
+            });
+
+            // Show all transactions
+            showAllTransactionsBtn.addEventListener('click', function() {
+                renderAllTransactions(allTransactions);
+                allTransactionsModal.show();
             });
 
             // Edit transaction
@@ -567,8 +620,8 @@
                 
                 const userId = currentUser.uid;
                 database.ref('users/' + userId + '/transactions').on('value', snapshot => {
-                    const transactions = snapshot.val() || [];
-                    updateUI(transactions);
+                    allTransactions = snapshot.val() || [];
+                    updateUI(allTransactions);
                 });
             }
 
@@ -770,7 +823,7 @@
                 updateCharts(transactions);
             }
 
-            // Render transactions list
+            // Render transactions list (shows only last 3 transactions)
             function renderTransactions(transactions) {
                 // Clear current list
                 transactionsList.innerHTML = '';
@@ -786,8 +839,11 @@
                 // Sort by date (newest first)
                 transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
+                // Take only last 3 transactions for the main view
+                const recentTransactions = transactions.slice(0, 3);
+                
                 // Add each transaction to the list
-                transactions.forEach(transaction => {
+                recentTransactions.forEach(transaction => {
                     const row = document.createElement('tr');
                     row.className = `transaction-item ${transaction.type}-item`;
                     
@@ -830,6 +886,47 @@
                         const id = this.getAttribute('data-id');
                         deleteTransaction(id);
                     });
+                });
+            }
+
+            // Render all transactions in the modal
+            function renderAllTransactions(transactions) {
+                // Clear current list
+                allTransactionsList.innerHTML = '';
+                
+                // Show "no transactions" message if empty
+                if (transactions.length === 0) {
+                    noAllTransactions.classList.remove('d-none');
+                    return;
+                }
+                
+                noAllTransactions.classList.add('d-none');
+                
+                // Sort by date (newest first)
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Add each transaction to the list
+                transactions.forEach(transaction => {
+                    const row = document.createElement('tr');
+                    row.className = `transaction-item ${transaction.type}-item`;
+                    
+                    // Format date
+                    const dateObj = new Date(transaction.date);
+                    const formattedDate = dateObj.toLocaleDateString('ar-EG');
+                    
+                    // Format amount with color based on type
+                    const amountClass = transaction.type === 'income' ? 'income' : 'expense';
+                    const amountSign = transaction.type === 'income' ? '+' : '-';
+                    
+                    row.innerHTML = `
+                        <td>${formattedDate}</td>
+                        <td>${transaction.type === 'income' ? 'دخل' : 'مصروف'}</td>
+                        <td>${transaction.category}</td>
+                        <td>${transaction.description || '-'}</td>
+                        <td class="${amountClass}">${amountSign} ${transaction.amount.toFixed(2)} ج.م</td>
+                    `;
+                    
+                    allTransactionsList.appendChild(row);
                 });
             }
 
