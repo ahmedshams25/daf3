@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تطبيق تتبع المصروفات والدخل</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --primary-color: #4e73df;
+            --secondary-color: #f8f9fc;
+            --text-color: #333;
+            --bg-color: #f8f9fc;
+            --card-bg: #fff;
+            --border-color: #e3e6f0;
+        }
+
+        .dark-mode {
+            --primary-color: #4e73df;
+            --secondary-color: #2a2a2a;
+            --text-color: #f8f9fc;
+            --bg-color: #1a1a1a;
+            --card-bg: #2a2a2a;
+            --border-color: #444;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        .form-control, .form-select {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            border-color: var(--border-color);
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .income {
+            color: #1cc88a;
+        }
+
+        .expense {
+            color: #e74a3b;
+        }
+
+        .transaction-item {
+            border-left: 4px solid;
+            transition: transform 0.2s;
+        }
+
+        .transaction-item:hover {
+            transform: translateX(-5px);
+        }
+
+        .income-item {
+            border-left-color: #1cc88a;
+        }
+
+        .expense-item {
+            border-left-color: #e74a3b;
+        }
+
+        .theme-toggle {
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            .stats-container {
+                flex-direction: column;
+            }
+            
+            .stat-card {
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+</head>
+<body class="">
+    <!-- Authentication Screen -->
+    <div id="authScreen" class="auth-container">
+        <div class="auth-card card shadow">
+            <div class="card-body p-5">
+                <h2 class="text-center mb-4">تسجيل الدخول</h2>
+                <form id="authForm">
+                    <div class="mb-3">
+                        <label for="authEmail" class="form-label">البريد الإلكتروني</label>
+                        <input type="email" class="form-control" id="authEmail" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="authPassword" class="form-label">كلمة المرور</label>
+                        <input type="password" class="form-control" id="authPassword" required>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <button type="button" id="loginBtn" class="btn btn-primary">تسجيل الدخول</button>
+                        <button type="button" id="signupBtn" class="btn btn-outline-primary">إنشاء حساب</button>
+                    </div>
+                    <div id="authMessage" class="text-danger text-center"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application Screen -->
+    <div id="appScreen" class="container py-4 hidden">
+        <header class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-0">تطبيق تتبع المصروفات والدخل</h1>
+                <small id="userEmail" class="text-muted"></small>
+            </div>
+            <div>
+                <i class="bi bi-moon-fill theme-toggle me-3" id="themeToggle"></i>
+                <button id="logoutBtn" class="btn btn-sm btn-outline-danger">تسجيل الخروج</button>
+            </div>
+        </header>
+
+        <div class="row stats-container mb-4">
+            <div class="col-md-4 stat-card">
+                <div class="card border-left-primary shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                    الرصيد الحالي</div>
+                                <div class="h5 mb-0 font-weight-bold" id="currentBalance">0 ج.م</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="bi bi-wallet2 fs-1 text-primary"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 stat-card">
+                <div class="card border-left-success shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    إجمالي الدخل</div>
+                                <div class="h5 mb-0 font-weight-bold income" id="totalIncome">0 ج.م</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="bi bi-arrow-down-circle fs-1 text-success"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 stat-card">
+                <div class="card border-left-danger shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                    إجمالي المصروفات</div>
+                                <div class="h5 mb-0 font-weight-bold expense" id="totalExpense">0 ج.م</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="bi bi-arrow-up-circle fs-1 text-danger"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-5 mb-4">
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">إضافة عملية جديدة</h6>
+                    </div>
+                    <div class="card-body">
+                        <form id="transactionForm">
+                            <div class="mb-3">
+                                <label for="amount" class="form-label">المبلغ</label>
+                                <input type="number" class="form-control" id="amount" required step="0.01" min="0.01">
+                            </div>
+                            <div class="mb-3">
+                                <label for="type" class="form-label">النوع</label>
+                                <select class="form-select" id="type" required>
+                                    <option value="">اختر النوع</option>
+                                    <option value="income">دخل</option>
+                                    <option value="expense">مصروف</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="category" class="form-label">التصنيف</label>
+                                <select class="form-select" id="category" required>
+                                    <option value="">اختر التصنيف</option>
+                                    <option value="راتب">راتب</option>
+                                    <option value="هدية">هدية</option>
+                                    <option value="استثمار">استثمار</option>
+                                    <option value="أكل">أكل</option>
+                                    <option value="مواصلات">مواصلات</option>
+                                    <option value="تسوق">تسوق</option>
+                                    <option value="ترفيه">ترفيه</option>
+                                    <option value="فواتير">فواتير</option>
+                                    <option value="أخرى">أخرى</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="date" class="form-label">التاريخ</label>
+                                <input type="date" class="form-control" id="date" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="description" class="form-label">وصف (اختياري)</label>
+                                <textarea class="form-control" id="description" rows="2"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">إضافة العملية</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">الإحصائيات الشهرية</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7 mb-4">
+                <div class="card shadow">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-primary">سجل العمليات</h6>
+                        <div>
+                            <input type="text" id="searchInput" class="form-control form-control-sm d-inline-block w-auto me-2" placeholder="بحث...">
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    تصفية
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="filterDropdown">
+                                    <li><a class="dropdown-item filter-option" href="#" data-filter="all">الكل</a></li>
+                                    <li><a class="dropdown-item filter-option" href="#" data-filter="income">الدخل</a></li>
+                                    <li><a class="dropdown-item filter-option" href="#" data-filter="expense">المصروفات</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="transactionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ</th>
+                                        <th>التصنيف</th>
+                                        <th>الوصف</th>
+                                        <th>المبلغ</th>
+                                        <th>إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionsList">
+                                    <!-- Transactions will be added here dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-center py-3" id="noTransactions">
+                            <p class="text-muted">لا توجد عمليات مسجلة</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow mt-4">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-primary">توزيع المصروفات</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="expensesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Transaction Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">تعديل العملية</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm">
+                        <input type="hidden" id="editId">
+                        <div class="mb-3">
+                            <label for="editAmount" class="form-label">المبلغ</label>
+                            <input type="number" class="form-control" id="editAmount" required step="0.01" min="0.01">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editType" class="form-label">النوع</label>
+                            <select class="form-select" id="editType" required>
+                                <option value="">اختر النوع</option>
+                                <option value="income">دخل</option>
+                                <option value="expense">مصروف</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editCategory" class="form-label">التصنيف</label>
+                            <select class="form-select" id="editCategory" required>
+                                <option value="">اختر التصنيف</option>
+                                <option value="راتب">راتب</option>
+                                <option value="هدية">هدية</option>
+                                <option value="استثمار">استثمار</option>
+                                <option value="أكل">أكل</option>
+                                <option value="مواصلات">مواصلات</option>
+                                <option value="تسوق">تسوق</option>
+                                <option value="ترفيه">ترفيه</option>
+                                <option value="فواتير">فواتير</option>
+                                <option value="أخرى">أخرى</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDate" class="form-label">التاريخ</label>
+                            <input type="date" class="form-control" id="editDate" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editDescription" class="form-label">وصف (اختياري)</label>
+                            <textarea class="form-control" id="editDescription" rows="2"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="button" id="saveEditBtn" class="btn btn-primary">حفظ التعديلات</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBbYerrLcTE4o44bsBXPynHQ6ArXvtyEro",
+            authDomain: "masrofat-c544f.firebaseapp.com",
+            projectId: "masrofat-c544f",
+            storageBucket: "masrofat-c544f.appspot.com",
+            messagingSenderId: "997053169222",
+            appId: "1:997053169222:web:5cdd2a2901265b7f2ad447",
+            measurementId: "G-RTBRP79JDL"
+        };
+
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const authScreen = document.getElementById('authScreen');
+            const appScreen = document.getElementById('appScreen');
+            const authForm = document.getElementById('authForm');
+            const authEmail = document.getElementById('authEmail');
+            const authPassword = document.getElementById('authPassword');
+            const loginBtn = document.getElementById('loginBtn');
+            const signupBtn = document.getElementById('signupBtn');
+            const authMessage = document.getElementById('authMessage');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const userEmail = document.getElementById('userEmail');
+            
+            const themeToggle = document.getElementById('themeToggle');
+            const transactionForm = document.getElementById('transactionForm');
+            const transactionsList = document.getElementById('transactionsList');
+            const noTransactions = document.getElementById('noTransactions');
+            const currentBalance = document.getElementById('currentBalance');
+            const totalIncome = document.getElementById('totalIncome');
+            const totalExpense = document.getElementById('totalExpense');
+            const filterOptions = document.querySelectorAll('.filter-option');
+            const searchInput = document.getElementById('searchInput');
+            
+            const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+            const editForm = document.getElementById('editForm');
+            const editId = document.getElementById('editId');
+            const editAmount = document.getElementById('editAmount');
+            const editType = document.getElementById('editType');
+            const editCategory = document.getElementById('editCategory');
+            const editDate = document.getElementById('editDate');
+            const editDescription = document.getElementById('editDescription');
+            const saveEditBtn = document.getElementById('saveEditBtn');
+            
+            let expensesChart = null;
+            let monthlyChart = null;
+            let currentUser = null;
+            let currentFilter = 'all';
+            let currentSearch = '';
+
+            // Initialize the app
+            init();
+
+            // Authentication event listeners
+            loginBtn.addEventListener('click', loginUser);
+            signupBtn.addEventListener('click', signupUser);
+            logoutBtn.addEventListener('click', logoutUser);
+
+            // Theme toggle
+            themeToggle.addEventListener('click', toggleTheme);
+
+            // Form submission
+            transactionForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                addTransaction();
+            });
+
+            // Filter transactions
+            filterOptions.forEach(option => {
+                option.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    currentFilter = this.getAttribute('data-filter');
+                    filterTransactions(currentFilter, currentSearch);
+                });
+            });
+
+            // Search transactions
+            searchInput.addEventListener('input', function() {
+                currentSearch = this.value.toLowerCase();
+                filterTransactions(currentFilter, currentSearch);
+            });
+
+            // Edit transaction
+            saveEditBtn.addEventListener('click', saveEditedTransaction);
+
+            // Initialize the app
+            function init() {
+                // Set today's date as default
+                const today = new Date();
+                const formattedDate = today.toISOString().substr(0, 10);
+                document.getElementById('date').value = formattedDate;
+                
+                // Load theme preference
+                if (localStorage.getItem('darkMode') === 'true') {
+                    document.body.classList.add('dark-mode');
+                    themeToggle.classList.replace('bi-moon-fill', 'bi-sun-fill');
+                }
+                
+                // Check auth state
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        currentUser = user;
+                        userEmail.textContent = user.email;
+                        authScreen.classList.add('hidden');
+                        appScreen.classList.remove('hidden');
+                        loadUserData();
+                    } else {
+                        currentUser = null;
+                        authScreen.classList.remove('hidden');
+                        appScreen.classList.add('hidden');
+                    }
+                });
+            }
+
+            // Login user
+            function loginUser() {
+                const email = authEmail.value;
+                const password = authPassword.value;
+                
+                if (!email || !password) {
+                    showAuthMessage('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+                    return;
+                }
+                
+                auth.signInWithEmailAndPassword(email, password)
+                    .then(() => {
+                        authMessage.textContent = '';
+                    })
+                    .catch(error => {
+                        showAuthMessage(getAuthErrorMessage(error));
+                    });
+            }
+
+            // Signup user
+            function signupUser() {
+                const email = authEmail.value;
+                const password = authPassword.value;
+                
+                if (!email || !password) {
+                    showAuthMessage('الرجاء إدخال البريد الإلكتروني وكلمة المرور');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    showAuthMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+                    return;
+                }
+                
+                auth.createUserWithEmailAndPassword(email, password)
+                    .then(() => {
+                        authMessage.textContent = '';
+                    })
+                    .catch(error => {
+                        showAuthMessage(getAuthErrorMessage(error));
+                    });
+            }
+
+            // Logout user
+            function logoutUser() {
+                auth.signOut();
+            }
+
+            // Show auth message
+            function showAuthMessage(message) {
+                authMessage.textContent = message;
+                setTimeout(() => {
+                    authMessage.textContent = '';
+                }, 5000);
+            }
+
+            // Get auth error message
+            function getAuthErrorMessage(error) {
+                switch (error.code) {
+                    case 'auth/invalid-email':
+                        return 'بريد إلكتروني غير صالح';
+                    case 'auth/user-disabled':
+                        return 'هذا الحساب معطل';
+                    case 'auth/user-not-found':
+                        return 'لا يوجد حساب بهذا البريد الإلكتروني';
+                    case 'auth/wrong-password':
+                        return 'كلمة المرور غير صحيحة';
+                    case 'auth/email-already-in-use':
+                        return 'هذا البريد الإلكتروني مستخدم بالفعل';
+                    case 'auth/weak-password':
+                        return 'كلمة المرور ضعيفة جداً';
+                    default:
+                        return 'حدث خطأ أثناء المصادقة';
+                }
+            }
+
+            // Load user data from Firebase
+            function loadUserData() {
+                if (!currentUser) return;
+                
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').on('value', snapshot => {
+                    const transactions = snapshot.val() || [];
+                    updateUI(transactions);
+                });
+            }
+
+            // Toggle dark/light theme
+            function toggleTheme() {
+                document.body.classList.toggle('dark-mode');
+                
+                if (document.body.classList.contains('dark-mode')) {
+                    localStorage.setItem('darkMode', 'true');
+                    themeToggle.classList.replace('bi-moon-fill', 'bi-sun-fill');
+                } else {
+                    localStorage.setItem('darkMode', 'false');
+                    themeToggle.classList.replace('bi-sun-fill', 'bi-moon-fill');
+                }
+            }
+
+            // Add a new transaction
+            function addTransaction() {
+                if (!currentUser) return;
+                
+                const amountInput = document.getElementById('amount');
+                const typeInput = document.getElementById('type');
+                const categoryInput = document.getElementById('category');
+                const dateInput = document.getElementById('date');
+                const descriptionInput = document.getElementById('description');
+                
+                const amount = parseFloat(amountInput.value);
+                const type = typeInput.value;
+                const category = categoryInput.value;
+                const date = dateInput.value;
+                const description = descriptionInput.value;
+                
+                if (!amount || isNaN(amount) || !type || !category || !date) {
+                    alert('الرجاء ملء جميع الحقول المطلوبة');
+                    return;
+                }
+                
+                const transaction = {
+                    id: Date.now(),
+                    amount: amount,
+                    type: type,
+                    category: category,
+                    date: date,
+                    description: description
+                };
+                
+                // Save transaction to Firebase
+                saveTransaction(transaction);
+                
+                // Reset form
+                transactionForm.reset();
+                // Reset date to today
+                const today = new Date();
+                const formattedDate = today.toISOString().substr(0, 10);
+                dateInput.value = formattedDate;
+            }
+
+            // Save transaction to Firebase
+            function saveTransaction(transaction) {
+                if (!currentUser) return;
+                
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        transactions.push(transaction);
+                        return database.ref('users/' + userId + '/transactions').set(transactions);
+                    });
+            }
+
+            // Edit transaction
+            function editTransaction(id) {
+                if (!currentUser) return;
+                
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const transaction = transactions.find(t => t.id == id);
+                        
+                        if (transaction) {
+                            editId.value = transaction.id;
+                            editAmount.value = transaction.amount;
+                            editType.value = transaction.type;
+                            editCategory.value = transaction.category;
+                            editDate.value = transaction.date;
+                            editDescription.value = transaction.description || '';
+                            
+                            editModal.show();
+                        }
+                    });
+            }
+
+            // Save edited transaction
+            function saveEditedTransaction() {
+                if (!currentUser) return;
+                
+                const userId = currentUser.uid;
+                const id = parseInt(editId.value);
+                const amount = parseFloat(editAmount.value);
+                const type = editType.value;
+                const category = editCategory.value;
+                const date = editDate.value;
+                const description = editDescription.value;
+                
+                if (!amount || isNaN(amount) || !type || !category || !date) {
+                    alert('الرجاء ملء جميع الحقول المطلوبة');
+                    return;
+                }
+                
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const index = transactions.findIndex(t => t.id == id);
+                        
+                        if (index !== -1) {
+                            transactions[index] = {
+                                id: id,
+                                amount: amount,
+                                type: type,
+                                category: category,
+                                date: date,
+                                description: description
+                            };
+                            
+                            return database.ref('users/' + userId + '/transactions').set(transactions);
+                        }
+                    })
+                    .then(() => {
+                        editModal.hide();
+                    });
+            }
+
+            // Delete a transaction
+            function deleteTransaction(id) {
+                if (!currentUser) return;
+                
+                if (!confirm('هل أنت متأكد من حذف هذه العملية؟')) {
+                    return;
+                }
+                
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        const transactions = snapshot.val() || [];
+                        const filteredTransactions = transactions.filter(t => t.id != id);
+                        return database.ref('users/' + userId + '/transactions').set(filteredTransactions);
+                    });
+            }
+
+            // Filter transactions by type and search
+            function filterTransactions(filter, search = '') {
+                if (!currentUser) return;
+                
+                const userId = currentUser.uid;
+                database.ref('users/' + userId + '/transactions').once('value')
+                    .then(snapshot => {
+                        let transactions = snapshot.val() || [];
+                        
+                        if (filter === 'income') {
+                            transactions = transactions.filter(t => t.type === 'income');
+                        } else if (filter === 'expense') {
+                            transactions = transactions.filter(t => t.type === 'expense');
+                        }
+                        
+                        if (search) {
+                            transactions = transactions.filter(t => 
+                                t.category.toLowerCase().includes(search) || 
+                                (t.description && t.description.toLowerCase().includes(search))
+                            );
+                        }
+                        
+                        renderTransactions(transactions);
+                    });
+            }
+
+            // Update UI with current data
+            function updateUI(transactions) {
+                // Calculate totals
+                const incomeTotal = transactions
+                    .filter(t => t.type === 'income')
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const expenseTotal = transactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const balance = incomeTotal - expenseTotal;
+                
+                // Update totals display
+                currentBalance.textContent = `${balance.toFixed(2)} ج.م`;
+                totalIncome.textContent = `${incomeTotal.toFixed(2)} ج.م`;
+                totalExpense.textContent = `${expenseTotal.toFixed(2)} ج.م`;
+                
+                // Render transactions
+                renderTransactions(transactions);
+                
+                // Update charts
+                updateCharts(transactions);
+            }
+
+            // Render transactions list
+            function renderTransactions(transactions) {
+                // Clear current list
+                transactionsList.innerHTML = '';
+                
+                // Show "no transactions" message if empty
+                if (transactions.length === 0) {
+                    noTransactions.classList.remove('d-none');
+                    return;
+                }
+                
+                noTransactions.classList.add('d-none');
+                
+                // Sort by date (newest first)
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Add each transaction to the list
+                transactions.forEach(transaction => {
+                    const row = document.createElement('tr');
+                    row.className = `transaction-item ${transaction.type}-item`;
+                    
+                    // Format date
+                    const dateObj = new Date(transaction.date);
+                    const formattedDate = dateObj.toLocaleDateString('ar-EG');
+                    
+                    // Format amount with color based on type
+                    const amountClass = transaction.type === 'income' ? 'income' : 'expense';
+                    const amountSign = transaction.type === 'income' ? '+' : '-';
+                    
+                    row.innerHTML = `
+                        <td>${formattedDate}</td>
+                        <td>${transaction.category}</td>
+                        <td>${transaction.description || '-'}</td>
+                        <td class="${amountClass}">${amountSign} ${transaction.amount.toFixed(2)} ج.م</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary edit-btn me-2" data-id="${transaction.id}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${transaction.id}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    
+                    transactionsList.appendChild(row);
+                });
+                
+                // Add event listeners to action buttons
+                document.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const id = this.getAttribute('data-id');
+                        editTransaction(id);
+                    });
+                });
+                
+                document.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const id = this.getAttribute('data-id');
+                        deleteTransaction(id);
+                    });
+                });
+            }
+
+            // Update charts
+            function updateCharts(transactions) {
+                updateExpensesChart(transactions);
+                updateMonthlyChart(transactions);
+            }
+
+            // Update expenses chart
+            function updateExpensesChart(transactions) {
+                const expenses = transactions.filter(t => t.type === 'expense');
+                
+                // Get chart canvas
+                const ctx = document.getElementById('expensesChart').getContext('2d');
+                
+                // Destroy previous chart if exists
+                if (expensesChart) {
+                    expensesChart.destroy();
+                }
+                
+                if (expenses.length === 0) {
+                    return;
+                }
+                
+                // Group expenses by category
+                const categories = {};
+                expenses.forEach(expense => {
+                    if (categories[expense.category]) {
+                        categories[expense.category] += expense.amount;
+                    } else {
+                        categories[expense.category] = expense.amount;
+                    }
+                });
+                
+                // Prepare data for chart
+                const labels = Object.keys(categories);
+                const data = Object.values(categories);
+                const backgroundColors = [
+                    '#e74a3b', '#f6c23e', '#4e73df', '#1cc88a', 
+                    '#36b9cc', '#5a5c69', '#858796', '#b7b7b7'
+                ];
+                
+                // Create new chart
+                expensesChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: backgroundColors,
+                            hoverBackgroundColor: backgroundColors,
+                            hoverBorderColor: "rgba(234, 236, 244, 1)",
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'left',
+                                rtl: true,
+                                labels: {
+                                    usePointStyle: true,
+                                    pointStyle: 'circle',
+                                    padding: 20,
+                                    font: {
+                                        family: 'Tahoma'
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '70%',
+                    }
+                });
+            }
+
+            // Update monthly chart
+            function updateMonthlyChart(transactions) {
+                // Get current year and month
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                
+                // Group transactions by month
+                const monthlyData = {};
+                
+                // Initialize all months
+                for (let month = 0; month < 12; month++) {
+                    monthlyData[month] = {
+                        income: 0,
+                        expense: 0
+                    };
+                }
+                
+                // Process transactions
+                transactions.forEach(transaction => {
+                    const date = new Date(transaction.date);
+                    const year = date.getFullYear();
+                    const month = date.getMonth();
+                    
+                    if (year === currentYear) {
+                        if (transaction.type === 'income') {
+                            monthlyData[month].income += transaction.amount;
+                        } else {
+                            monthlyData[month].expense += transaction.amount;
+                        }
+                    }
+                });
+                
+                // Prepare data for chart
+                const months = [
+                    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+                    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+                ];
+                
+                const incomeData = [];
+                const expenseData = [];
+                
+                for (let month = 0; month < 12; month++) {
+                    incomeData.push(monthlyData[month].income);
+                    expenseData.push(monthlyData[month].expense);
+                }
+                
+                // Get chart canvas
+                const ctx = document.getElementById('monthlyChart').getContext('2d');
+                
+                // Destroy previous chart if exists
+                if (monthlyChart) {
+                    monthlyChart.destroy();
+                }
+                
+                // Create new chart
+                monthlyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: months,
+                        datasets: [
+                            {
+                                label: 'الدخل',
+                                backgroundColor: '#1cc88a',
+                                hoverBackgroundColor: '#17a673',
+                                data: incomeData
+                            },
+                            {
+                                label: 'المصروفات',
+                                backgroundColor: '#e74a3b',
+                                hoverBackgroundColor: '#be2617',
+                                data: expenseData
+                            }
+                        ]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        scales: {
+                            x: {
+                                stacked: false,
+                                grid: {
+                                    display: false
+                                }
+                            },
+                            y: {
+                                stacked: false,
+                                grid: {
+                                    display: true
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                rtl: true
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
