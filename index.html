@@ -103,6 +103,11 @@
             padding: 10px;
         }
 
+        .transactions-container {
+            height: 400px;
+            overflow-y: auto;
+        }
+
         @media (max-width: 768px) {
             .stats-container {
                 flex-direction: column;
@@ -279,29 +284,31 @@
                             </div>
                         </div>
                     </div>
-                    <div class="card-body" style="height: 400px; overflow-y: auto;" id="transactionsContainer">
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="transactionsTable">
-                                <thead>
-                                    <tr>
-                                        <th>التاريخ</th>
-                                        <th>التصنيف</th>
-                                        <th>الوصف</th>
-                                        <th>المبلغ</th>
-                                        <th>إجراءات</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="transactionsList">
-                                    <!-- Transactions will be added here dynamically -->
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="text-center py-3" id="noTransactions">
-                            <p class="text-muted">لا توجد عمليات مسجلة</p>
-                        </div>
-                        <div id="loadingSpinner" class="loading-spinner">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">جاري التحميل...</span>
+                    <div class="card-body p-0">
+                        <div class="transactions-container" id="transactionsContainer">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="transactionsTable">
+                                    <thead class="sticky-top" style="background-color: var(--card-bg);">
+                                        <tr>
+                                            <th>التاريخ</th>
+                                            <th>التصنيف</th>
+                                            <th>الوصف</th>
+                                            <th>المبلغ</th>
+                                            <th>إجراءات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactionsList">
+                                        <!-- Transactions will be added here dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="text-center py-3" id="noTransactions">
+                                <p class="text-muted">لا توجد عمليات مسجلة</p>
+                            </div>
+                            <div id="loadingSpinner" class="loading-spinner">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">جاري التحميل...</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -435,6 +442,7 @@
             let currentSearch = '';
             let displayedTransactions = 3;
             let allTransactions = [];
+            let filteredTransactions = [];
             let isLoading = false;
 
             // Initialize the app
@@ -459,26 +467,26 @@
                 option.addEventListener('click', function(e) {
                     e.preventDefault();
                     currentFilter = this.getAttribute('data-filter');
-                    displayedTransactions = 3; // Reset to initial count
-                    filterTransactions(currentFilter, currentSearch);
+                    displayedTransactions = 3;
+                    filterAndDisplayTransactions();
                 });
             });
 
             // Search transactions
             searchInput.addEventListener('input', function() {
                 currentSearch = this.value.toLowerCase();
-                displayedTransactions = 3; // Reset to initial count
-                filterTransactions(currentFilter, currentSearch);
+                displayedTransactions = 3;
+                filterAndDisplayTransactions();
             });
 
             // Infinite scroll
             transactionsContainer.addEventListener('scroll', function() {
-                if (isLoading) return;
+                if (isLoading || displayedTransactions >= filteredTransactions.length) return;
                 
                 const { scrollTop, scrollHeight, clientHeight } = transactionsContainer;
                 const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50;
                 
-                if (isNearBottom && displayedTransactions < allTransactions.length) {
+                if (isNearBottom) {
                     loadMoreTransactions();
                 }
             });
@@ -598,8 +606,9 @@
                 const userId = currentUser.uid;
                 database.ref('users/' + userId + '/transactions').on('value', snapshot => {
                     const transactions = snapshot.val() || [];
-                    allTransactions = transactions;
-                    updateUI(transactions);
+                    allTransactions = transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    filterAndDisplayTransactions();
+                    updateTotalsAndCharts();
                 });
             }
 
@@ -672,8 +681,6 @@
 
             // Edit transaction
             function editTransaction(id) {
-                if (!currentUser) return;
-                
                 const transaction = allTransactions.find(t => t.id == id);
                 
                 if (transaction) {
@@ -724,7 +731,8 @@
                 database.ref('users/' + userId + '/transactions').set(allTransactions)
                     .then(() => {
                         editModal.hide();
-                        updateUI(allTransactions);
+                        filterAndDisplayTransactions();
+                        updateTotalsAndCharts();
                     });
             }
 
@@ -745,63 +753,35 @@
                 database.ref('users/' + userId + '/transactions').set(allTransactions);
             }
 
-            // Filter transactions by type and search
-            function filterTransactions(filter, search = '') {
-                let filteredTransactions = [...allTransactions];
+            // Filter transactions based on current filter and search
+            function filterTransactions() {
+                filteredTransactions = [...allTransactions];
                 
-                if (filter === 'income') {
+                if (currentFilter === 'income') {
                     filteredTransactions = filteredTransactions.filter(t => t.type === 'income');
-                } else if (filter === 'expense') {
+                } else if (currentFilter === 'expense') {
                     filteredTransactions = filteredTransactions.filter(t => t.type === 'expense');
                 }
                 
-                if (search) {
+                if (currentSearch) {
                     filteredTransactions = filteredTransactions.filter(t => 
-                        t.category.toLowerCase().includes(search) || 
-                        (t.description && t.description.toLowerCase().includes(search))
+                        t.category.toLowerCase().includes(currentSearch) || 
+                        (t.description && t.description.toLowerCase().includes(currentSearch))
                     );
                 }
                 
-                // Sort by date (newest first)
-                filteredTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-                // Update UI with filtered transactions
-                updateTransactionsList(filteredTransactions.slice(0, displayedTransactions));
-                
-                // Update totals with all transactions (not filtered)
-                updateTotals(allTransactions);
-                
-                // Update charts with all transactions (not filtered)
-                updateCharts(allTransactions);
+                return filteredTransactions;
             }
 
-            // Load more transactions on scroll
-            function loadMoreTransactions() {
-                isLoading = true;
-                loadingSpinner.style.display = 'block';
+            // Display transactions based on current display count
+            function displayTransactions() {
+                const transactionsToShow = filteredTransactions.slice(0, displayedTransactions);
                 
-                setTimeout(() => {
-                    displayedTransactions += 3;
-                    filterTransactions(currentFilter, currentSearch);
-                    isLoading = false;
-                    loadingSpinner.style.display = 'none';
-                }, 500);
-            }
-
-            // Update UI with current data
-            function updateUI(transactions) {
-                allTransactions = transactions;
-                displayedTransactions = 3; // Reset to initial count
-                filterTransactions(currentFilter, currentSearch);
-            }
-
-            // Update transactions list
-            function updateTransactionsList(transactions) {
                 // Clear current list
                 transactionsList.innerHTML = '';
                 
                 // Show "no transactions" message if empty
-                if (transactions.length === 0) {
+                if (transactionsToShow.length === 0) {
                     noTransactions.classList.remove('d-none');
                     return;
                 }
@@ -809,7 +789,7 @@
                 noTransactions.classList.add('d-none');
                 
                 // Add each transaction to the list
-                transactions.forEach(transaction => {
+                transactionsToShow.forEach(transaction => {
                     const row = document.createElement('tr');
                     row.className = `transaction-item ${transaction.type}-item`;
                     
@@ -855,14 +835,39 @@
                 });
             }
 
+            // Filter and display transactions
+            function filterAndDisplayTransactions() {
+                filterTransactions();
+                displayTransactions();
+            }
+
+            // Load more transactions on scroll
+            function loadMoreTransactions() {
+                isLoading = true;
+                loadingSpinner.style.display = 'block';
+                
+                setTimeout(() => {
+                    displayedTransactions += 3;
+                    displayTransactions();
+                    isLoading = false;
+                    loadingSpinner.style.display = 'none';
+                }, 500);
+            }
+
+            // Update totals and charts
+            function updateTotalsAndCharts() {
+                updateTotals();
+                updateCharts();
+            }
+
             // Update totals
-            function updateTotals(transactions) {
+            function updateTotals() {
                 // Calculate totals
-                const incomeTotal = transactions
+                const incomeTotal = allTransactions
                     .filter(t => t.type === 'income')
                     .reduce((sum, t) => sum + t.amount, 0);
                 
-                const expenseTotal = transactions
+                const expenseTotal = allTransactions
                     .filter(t => t.type === 'expense')
                     .reduce((sum, t) => sum + t.amount, 0);
                 
@@ -875,14 +880,14 @@
             }
 
             // Update charts
-            function updateCharts(transactions) {
-                updateExpensesChart(transactions);
-                updateMonthlyChart(transactions);
+            function updateCharts() {
+                updateExpensesChart();
+                updateMonthlyChart();
             }
 
             // Update expenses chart
-            function updateExpensesChart(transactions) {
-                const expenses = transactions.filter(t => t.type === 'expense');
+            function updateExpensesChart() {
+                const expenses = allTransactions.filter(t => t.type === 'expense');
                 
                 // Get chart canvas
                 const ctx = document.getElementById('expensesChart').getContext('2d');
@@ -948,7 +953,7 @@
             }
 
             // Update monthly chart
-            function updateMonthlyChart(transactions) {
+            function updateMonthlyChart() {
                 // Get current year and month
                 const now = new Date();
                 const currentYear = now.getFullYear();
@@ -965,7 +970,7 @@
                 }
                 
                 // Process transactions
-                transactions.forEach(transaction => {
+                allTransactions.forEach(transaction => {
                     const date = new Date(transaction.date);
                     const year = date.getFullYear();
                     const month = date.getMonth();
