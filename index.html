@@ -388,6 +388,7 @@
                                     <th>التصنيف</th>
                                     <th>الوصف</th>
                                     <th>المبلغ</th>
+                                    <th>إجراءات</th>
                                 </tr>
                             </thead>
                             <tbody id="allTransactionsList">
@@ -924,9 +925,35 @@
                         <td>${transaction.category}</td>
                         <td>${transaction.description || '-'}</td>
                         <td class="${amountClass}">${amountSign} ${transaction.amount.toFixed(2)} ج.م</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary edit-btn me-2" data-id="${transaction.id}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${transaction.id}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
                     `;
                     
                     allTransactionsList.appendChild(row);
+                });
+                
+                // Add event listeners to action buttons in modal
+                document.querySelectorAll('#allTransactionsList .edit-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const id = this.getAttribute('data-id');
+                        editTransaction(id);
+                        allTransactionsModal.hide();
+                    });
+                });
+                
+                document.querySelectorAll('#allTransactionsList .delete-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const id = this.getAttribute('data-id');
+                        if (confirm('هل أنت متأكد من حذف هذه العملية؟')) {
+                            deleteTransaction(id);
+                        }
+                    });
                 });
             }
 
